@@ -10,32 +10,27 @@ import {
 
 export const register = () => async (dispatch) => {
   dispatch({ type: USER_LOADING });
-  try {
-    const response = await axios({
-      method: "POST",
-      url: "/register_candidate",
-    });
-    const { apikey } = response.data;
-    localStorage.setItem("apikey", apikey);
-    dispatch(setAPIKey(apikey));
-  } catch (err) {
-    dispatch({ type: USER_ERROR });
-  }
+  const response = await axios({
+    method: "POST",
+    url: "/register_candidate",
+  });
+  const { apikey } = response.data;
+  localStorage.setItem("apikey", apikey);
+  if (response.status === 200) dispatch(setAPIKey(apikey));
+  else dispatch({ type: USER_ERROR });
 };
 
 export const createPlayer = (apikey, name) => async (dispatch) => {
   dispatch({ type: USER_LOADING });
-  try {
-    const response = await axios({
-      method: "POST",
-      url: "/player",
-      data: { name, apikey },
-    });
-    localStorage.setItem("player", JSON.stringify(response.data));
-    dispatch(setUser(response.data));
-  } catch (err) {
-    dispatch({ type: USER_ERROR });
-  }
+
+  const response = await axios({
+    method: "POST",
+    url: "/player",
+    data: { name, apikey },
+  });
+  localStorage.setItem("player", JSON.stringify(response.data));
+  if (response.status === 200) dispatch(setUser(response.data));
+  else dispatch({ type: USER_ERROR });
 };
 
 export const setSocket = (socket) => ({
