@@ -131,7 +131,6 @@ const Game = (props) => {
       }
 
       socket.on("joined", (data) => {
-        console.log("joined", data);
         const { matrix, player, seat } = data;
         const { id } = user;
         if (player.id === id) {
@@ -145,7 +144,6 @@ const Game = (props) => {
       });
 
       socket.on("left", (data) => {
-        console.log("player left", data);
         const { player } = data;
         const { id } = user;
         if (player.id !== id) {
