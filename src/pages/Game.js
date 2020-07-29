@@ -1,10 +1,17 @@
-import React, { useState, useEffect } from "react";
+import React, { useEffect } from "react";
 import { Redirect } from "react-router-dom";
 import { useSelector, useDispatch } from "react-redux";
 import styled from "styled-components";
 import io from "socket.io-client";
 
 import { setUser, setSocket } from "../store/actions/authActions";
+import {
+  setSeat,
+  setMatrix,
+  setWinner,
+  setJoined,
+  setLeft,
+} from "../store/actions/gameActions";
 import Alert from "../components/Alert";
 
 const GameWrapper = styled.div`
@@ -79,12 +86,9 @@ const GameWrapper = styled.div`
 `;
 
 const Game = (props) => {
-  const [seat, setSeat] = useState(null);
-  const [matrix, setMatrix] = useState(null);
-  const [winner, setWinner] = useState(null);
-  const [joined, setJoined] = useState(null);
-  const [left, setLeft] = useState(null);
-
+  const { seat, matrix, winner, joined, left } = useSelector(
+    (state) => state.game
+  );
   const { user, socket } = useSelector((state) => state.auth);
 
   const dispatch = useDispatch();
@@ -92,28 +96,34 @@ const Game = (props) => {
   useEffect(() => {
     if (!user && localStorage.getItem("player"))
       dispatch(setUser(JSON.parse(localStorage.getItem("player"))));
-    if (user && !socket)
+    if (user && !socket && !localStorage.getItem("socket"))
       dispatch(setSocket(io(`http://178.128.206.150:7000/?id=${user.id}`)));
   }, [dispatch, user, socket]);
 
   useEffect(() => {
     if (joined) {
       var timeout = setTimeout(() => {
-        setJoined(null);
+        dispatch(setJoined(null));
       }, 3000);
     }
     return () => clearTimeout(timeout);
-  }, [joined]);
+  }, [joined, dispatch]);
 
   useEffect(() => {
     if (left) {
       var timeout = setTimeout(() => {
-        setLeft(null);
+        dispatch(setLeft(null));
       }, 3000);
     }
 
     return () => clearTimeout(timeout);
-  }, [left]);
+  }, [left, dispatch]);
+
+  useEffect(() => {
+    if (localStorage.getItem("matrix")) {
+      dispatch(setMatrix(JSON.parse(localStorage.getItem("matrix"))));
+    }
+  }, [dispatch]);
 
   useEffect(() => {
     const boardID = props.match.params.board_id;
@@ -126,20 +136,20 @@ const Game = (props) => {
         });
       } else {
         const seat = +localStorage.getItem("seat");
-        setSeat(seat);
-        setMatrix(JSON.parse(localStorage.getItem("matrix")));
+        dispatch(setSeat(seat));
+        dispatch(setMatrix(JSON.parse(localStorage.getItem("matrix"))));
       }
 
       socket.on("joined", (data) => {
         const { matrix, player, seat } = data;
         const { id } = user;
         if (player.id === id) {
-          setSeat(seat);
+          dispatch(setSeat(seat));
           localStorage.setItem("seat", seat);
-          setMatrix(JSON.parse(matrix));
+          dispatch(setMatrix(JSON.parse(matrix)));
           localStorage.setItem("matrix", matrix);
         } else {
-          setJoined(player);
+          dispatch(setJoined(player));
         }
       });
 
@@ -147,18 +157,27 @@ const Game = (props) => {
         const { player } = data;
         const { id } = user;
         if (player.id !== id) {
-          setLeft(player);
+          dispatch(setLeft(player));
+        }
+      });
+
+      socket.on("seat_left", (data) => {
+        const { player } = data;
+        if (player.id === user.id) {
+          dispatch(setSeat(null));
+          localStorage.removeItem("seat");
         }
       });
 
       socket.on("marked", (data) => {
-        setMatrix(data.matrix);
+        dispatch(setMatrix(data.matrix));
+        localStorage.setItem("matrix", JSON.stringify(data.matrix));
       });
 
       socket.on("restarted", (data) => {
         localStorage.removeItem("winner");
-        setWinner(null);
-        setMatrix({
+        dispatch(setWinner(null));
+        const m = {
           0: "0",
           1: "0",
           2: "0",
@@ -168,49 +187,66 @@ const Game = (props) => {
           6: "0",
           7: "0",
           8: "0",
-        });
+        };
+        dispatch(setMatrix(m));
+        localStorage.setItem(JSON.stringify(m));
       });
 
       socket.on("tie", () => {
         localStorage.setItem("winner", JSON.stringify({ name: "Nobody" }));
-        setWinner({ name: "Nobody" });
+        dispatch(setWinner({ name: "Nobody" }));
       });
 
       socket.on("win", (data) => {
         localStorage.setItem("winner", JSON.stringify(data.player));
-        setWinner(data.player);
+        dispatch(setWinner(data.player));
       });
 
       return () => socket.removeAllListeners();
     }
-  }, [socket, props.match.params.board_id, user, props.history]);
+  }, [socket, props.match.params.board_id, user, props.history, dispatch]);
 
   useEffect(() => {
     if (localStorage.getItem("winner")) {
-      setWinner(JSON.parse(localStorage.getItem("winner")));
+      dispatch(setWinner(JSON.parse(localStorage.getItem("winner"))));
     }
-  }, []);
+  }, [dispatch]);
 
   const handleLeaveRoom = () => {
     const boardID = props.match.params.board_id;
-    socket.emit("leave_room", boardID, (responseCode) => {
-      console.log(`Ack: ${responseCode}`);
-      localStorage.removeItem("board");
-      localStorage.removeItem("seat");
-      localStorage.removeItem("matrix");
-      localStorage.removeItem("winner");
-      props.history.push("/boards");
-    });
+    if (seat) {
+      socket.emit("leave_seat", boardID, seat, (responseCode) => {
+        console.log(`Ack: ${responseCode}`);
+        localStorage.removeItem("seat");
+        socket.emit("leave_room", boardID, (responseCode) => {
+          console.log(`Ack: ${responseCode}`);
+          localStorage.removeItem("board");
+          localStorage.removeItem("matrix");
+          localStorage.removeItem("winner");
+          props.history.push("/boards");
+        });
+      });
+    } else {
+      socket.emit("leave_room", boardID, (responseCode) => {
+        console.log(`Ack: ${responseCode}`);
+        localStorage.removeItem("board");
+        localStorage.removeItem("seat");
+        localStorage.removeItem("matrix");
+        localStorage.removeItem("winner");
+        props.history.push("/boards");
+      });
+    }
   };
 
   const handleLeaveSeat = () => {
     const boardID = props.match.params.board_id;
-    socket.emit("leave_seat", boardID, (responseCode) => {
+    socket.emit("leave_seat", boardID, seat, (responseCode) => {
       console.log(`Ack: ${responseCode}`);
     });
   };
 
   const handleClick = (e) => {
+    if (!seat) return;
     const tile = +e.target.dataset.index;
     const boardID = props.match.params.board_id;
     socket.emit("mark_tile", boardID, tile, (responseCode) => {
@@ -233,14 +269,16 @@ const Game = (props) => {
       {left && <Alert text={`${left.name} left`} />}
 
       <button onClick={handleLeaveRoom}>Leave room</button>
-      <button onClick={handleLeaveSeat}>Leave seat</button>
+      <button onClick={handleLeaveSeat} disabled={!seat}>
+        Leave seat
+      </button>
       <button onClick={handleRestart}>Restart</button>
       {matrix && !winner && (
         <div className="board-wrapper">
           <div className="info">
             <p className="text-left username">{user && user.name}</p>
             <p className="text-left">
-              <b>Seat:</b> {seat}
+              <b>Seat:</b> {seat ? seat : "none"}
             </p>
             <p className="text-left">
               <b>Board ID:</b> {props.match.params.board_id}

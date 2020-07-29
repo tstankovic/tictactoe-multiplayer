@@ -2,11 +2,11 @@ import React, { useEffect, useRef } from "react";
 import { Link, Redirect } from "react-router-dom";
 import { useSelector, useDispatch } from "react-redux";
 import styled from "styled-components";
-import io from "socket.io-client";
 
 import img from "../images/tictactoe.png";
-import { setUser, setSocket } from "../store/actions/authActions";
+import { setUser } from "../store/actions/authActions";
 import { getBoards, createBoard } from "../store/actions/boardActions";
+import { setSeat, setMatrix, setWinner } from "../store/actions/gameActions";
 
 const BoardsWrapper = styled.div`
   .heading {
@@ -88,7 +88,7 @@ const BoardsWrapper = styled.div`
 `;
 
 const Boards = (props) => {
-  const { user, socket, key } = useSelector((state) => state.auth);
+  const { user, key } = useSelector((state) => state.auth);
   const { boards, boardsLoading, boardCreating } = useSelector(
     (state) => state.boards
   );
@@ -100,15 +100,25 @@ const Boards = (props) => {
   useEffect(() => {
     if (!user && localStorage.getItem("player"))
       dispatch(setUser(JSON.parse(localStorage.getItem("player"))));
-    if (user && !socket)
-      dispatch(setSocket(io(`http://178.128.206.150:7000/?id=${user.id}`)));
-  }, [dispatch, user, socket]);
+  }, [dispatch, user]);
 
   useEffect(() => {
     if (key) {
       dispatch(getBoards(key));
     }
   }, [key, dispatch]);
+
+  useEffect(() => {
+    if (localStorage.getItem("board")) {
+      localStorage.removeItem("board");
+      localStorage.removeItem("seat");
+      localStorage.removeItem("matrix");
+      localStorage.removeItem("winner");
+      setSeat(null);
+      setMatrix(null);
+      setWinner(null);
+    }
+  }, []);
 
   const handleSubmit = (e) => {
     e.preventDefault();
